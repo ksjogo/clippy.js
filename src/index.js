@@ -1,4 +1,5 @@
-var clippy = {};
+var clippy = {},
+    $ = require('jquery');
 
 clippy.BASE_PATH = '//s3.amazonaws.com/clippy.js/Agents/';
 
