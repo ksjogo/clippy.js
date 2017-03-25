@@ -1,5 +1,126 @@
 var clippy = {};
 
+clippy.BASE_PATH = '//s3.amazonaws.com/clippy.js/Agents/';
+
+clippy.load = function (name, successCb, failCb) {
+    var path = clippy.BASE_PATH + name;
+
+    var mapDfd = clippy.load._loadMap(path);
+    var agentDfd = clippy.load._loadAgent(name, path);
+    var soundsDfd = clippy.load._loadSounds(name, path);
+
+    var data;
+    agentDfd.done(function (d) {
+        data = d;
+    });
+
+    var sounds;
+
+    soundsDfd.done(function (d) {
+        sounds = d;
+    });
+
+    // wrapper to the success callback
+    var cb = function () {
+        var a = new clippy.Agent(path, data,sounds);
+        successCb(a);
+    };
+
+    $.when(mapDfd, agentDfd, soundsDfd).done(cb).fail(failCb);
+};
+
+clippy.load._maps = {};
+clippy.load._loadMap = function (path) {
+    var dfd = clippy.load._maps[path];
+    if (dfd) return dfd;
+
+    // set dfd if not defined
+    dfd = clippy.load._maps[path] = $.Deferred();
+
+    var src = path + '/map.png';
+    var img = new Image();
+
+    img.onload = dfd.resolve;
+    img.onerror = dfd.reject;
+
+    // start loading the map;
+    img.setAttribute('src', src);
+
+    return dfd.promise();
+};
+
+clippy.load._sounds = {};
+
+clippy.load._loadSounds = function (name, path) {
+    var dfd = clippy.load._sounds[name];
+    if (dfd) return dfd;
+
+    // set dfd if not defined
+    dfd = clippy.load._sounds[name] = $.Deferred();
+
+    var audio = document.createElement('audio');
+    var canPlayMp3 = !!audio.canPlayType && "" != audio.canPlayType('audio/mpeg');
+    var canPlayOgg = !!audio.canPlayType && "" != audio.canPlayType('audio/ogg; codecs="vorbis"');
+
+    if (!canPlayMp3 && !canPlayOgg) {
+        dfd.resolve({});
+    } else {
+        var src = path + (canPlayMp3 ? '/sounds-mp3.js' : '/sounds-ogg.js');
+        // load
+        clippy.load._loadScript(src);
+    }
+
+    return dfd.promise()
+};
+
+
+clippy.load._data = {};
+clippy.load._loadAgent = function (name, path) {
+    var dfd = clippy.load._data[name];
+    if (dfd) return dfd;
+
+    dfd = clippy.load._getAgentDfd(name);
+
+    var src = path + '/agent.js';
+
+    clippy.load._loadScript(src);
+
+    return dfd.promise();
+};
+
+clippy.load._loadScript = function (src) {
+    var script = document.createElement('script');
+    script.setAttribute('src', src);
+    script.setAttribute('async', 'async');
+    script.setAttribute('type', 'text/javascript');
+
+    document.head.appendChild(script);
+};
+
+clippy.load._getAgentDfd = function (name) {
+    var dfd = clippy.load._data[name];
+    if (!dfd) {
+        dfd = clippy.load._data[name] = $.Deferred();
+    }
+    return dfd;
+};
+
+clippy.ready = function (name, data) {
+    var dfd = clippy.load._getAgentDfd(name);
+    dfd.resolve(data);
+};
+
+clippy.soundsReady = function (name, data) {
+    var dfd = clippy.load._sounds[name];
+    if (!dfd) {
+        dfd = clippy.load._sounds[name] = $.Deferred();
+    }
+
+    dfd.resolve(data);
+};
+
+var clippy = {};
+
 /******
  *
  *
@@ -414,7 +535,7 @@ clippy.Agent.prototype = {
     },
 
     _updateLocation:function () {
-        this._el.css({top:this._targetY, left:this._taregtX});
+        this._el.css({top:this._targetY, left:this._targetX});
         this._dragUpdateLoop = window.setTimeout($.proxy(this._updateLocation, this), 10);
     },
 
@@ -422,7 +543,7 @@ clippy.Agent.prototype = {
         e.preventDefault();
         var x = e.clientX - this._offset.left;
         var y = e.clientY - this._offset.top;
-        this._taregtX = x;
+        this._targetX = x;
         this._targetY = y;
     },
 
@@ -664,7 +785,7 @@ clippy.Balloon = function (targetEl) {
 
 clippy.Balloon.prototype = {
 
-    WORD_SPEAK_TIME:320,
+    WORD_SPEAK_TIME:200,
     CLOSE_BALLOON_DELAY:2000,
 
     _setup:function () {
@@ -696,6 +817,8 @@ clippy.Balloon.prototype = {
         var o = this._targetEl.offset();
         var h = this._targetEl.height();
         var w = this._targetEl.width();
+        o.top -= $(window).scrollTop();
+        o.left -= $(window).scrollLeft();
 
         var bH = this._balloon.outerHeight();
         var bW = this._balloon.outerWidth();
@@ -707,26 +830,26 @@ clippy.Balloon.prototype = {
 
         var left, top;
         switch (side) {
-            case 'top-left':
-                // right side of the balloon next to the right side of the agent
-                left = o.left + w - bW;
-                top = o.top - bH - this._BALLOON_MARGIN;
-                break;
-            case 'top-right':
-                // left side of the balloon next to the left side of the agent
-                left = o.left;
-                top = o.top - bH - this._BALLOON_MARGIN;
-                break;
-            case 'bottom-right':
-                // right side of the balloon next to the right side of the agent
-                left = o.left;
-                top = o.top + h + this._BALLOON_MARGIN;
-                break;
-            case 'bottom-left':
-                // left side of the balloon next to the left side of the agent
-                left = o.left + w - bW;
-                top = o.top + h + this._BALLOON_MARGIN;
-                break;
+        case 'top-left':
+            // right side of the balloon next to the right side of the agent
+            left = o.left + w - bW;
+            top = o.top - bH - this._BALLOON_MARGIN;
+            break;
+        case 'top-right':
+            // left side of the balloon next to the left side of the agent
+            left = o.left;
+            top = o.top - bH - this._BALLOON_MARGIN;
+            break;
+        case 'bottom-right':
+            // right side of the balloon next to the right side of the agent
+            left = o.left;
+            top = o.top + h + this._BALLOON_MARGIN;
+            break;
+        case 'bottom-left':
+            // left side of the balloon next to the left side of the agent
+            left = o.left + w - bW;
+            top = o.top + h + this._BALLOON_MARGIN;
+            break;
         }
 
         this._balloon.css({top:top, left:left});
@@ -804,6 +927,7 @@ clippy.Balloon.prototype = {
         this._addWord = $.proxy(function () {
             if (!this._active) return;
             if (idx > words.length) {
+                delete this._addWord;
                 this._active = false;
                 if (!this._hold) {
                     complete();
@@ -837,130 +961,14 @@ clippy.Balloon.prototype = {
     },
 
     resume:function () {
-        if (this._addWord)  this._addWord();
-        this._hiding = window.setTimeout($.proxy(this._finishHideBalloon, this), this.CLOSE_BALLOON_DELAY);
+        if (this._addWord) {
+            this._addWord();
+        } else if (!this._hold && !this._hidden) {
+            this._hiding = window.setTimeout($.proxy(this._finishHideBalloon, this), this.CLOSE_BALLOON_DELAY);
+        }
     }
 
 
-};
-
-clippy.BASE_PATH = '//s3.amazonaws.com/clippy.js/Agents/';
-
-clippy.load = function (name, successCb, failCb) {
-    var path = clippy.BASE_PATH + name;
-
-    var mapDfd = clippy.load._loadMap(path);
-    var agentDfd = clippy.load._loadAgent(name, path);
-    var soundsDfd = clippy.load._loadSounds(name, path);
-
-    var data;
-    agentDfd.done(function (d) {
-        data = d;
-    });
-
-    var sounds;
-
-    soundsDfd.done(function (d) {
-        sounds = d;
-    });
-
-    // wrapper to the success callback
-    var cb = function () {
-        var a = new clippy.Agent(path, data,sounds);
-        successCb(a);
-    };
-
-    $.when(mapDfd, agentDfd, soundsDfd).done(cb).fail(failCb);
-};
-
-clippy.load._maps = {};
-clippy.load._loadMap = function (path) {
-    var dfd = clippy.load._maps[path];
-    if (dfd) return dfd;
-
-    // set dfd if not defined
-    dfd = clippy.load._maps[path] = $.Deferred();
-
-    var src = path + '/map.png';
-    var img = new Image();
-
-    img.onload = dfd.resolve;
-    img.onerror = dfd.reject;
-
-    // start loading the map;
-    img.setAttribute('src', src);
-
-    return dfd.promise();
-};
-
-clippy.load._sounds = {};
-
-clippy.load._loadSounds = function (name, path) {
-    var dfd = clippy.load._sounds[name];
-    if (dfd) return dfd;
-
-    // set dfd if not defined
-    dfd = clippy.load._sounds[name] = $.Deferred();
-
-    var audio = document.createElement('audio');
-    var canPlayMp3 = !!audio.canPlayType && "" != audio.canPlayType('audio/mpeg');
-    var canPlayOgg = !!audio.canPlayType && "" != audio.canPlayType('audio/ogg; codecs="vorbis"');
-
-    if (!canPlayMp3 && !canPlayOgg) {
-        dfd.resolve({});
-    } else {
-        var src = path + (canPlayMp3 ? '/sounds-mp3.js' : '/sounds-ogg.js');
-        // load
-        clippy.load._loadScript(src);
-    }
-
-    return dfd.promise()
-};
-
-
-clippy.load._data = {};
-clippy.load._loadAgent = function (name, path) {
-    var dfd = clippy.load._data[name];
-    if (dfd) return dfd;
-
-    dfd = clippy.load._getAgentDfd(name);
-
-    var src = path + '/agent.js';
-
-    clippy.load._loadScript(src);
-
-    return dfd.promise();
-};
-
-clippy.load._loadScript = function (src) {
-    var script = document.createElement('script');
-    script.setAttribute('src', src);
-    script.setAttribute('async', 'async');
-    script.setAttribute('type', 'text/javascript');
-
-    document.head.appendChild(script);
-};
-
-clippy.load._getAgentDfd = function (name) {
-    var dfd = clippy.load._data[name];
-    if (!dfd) {
-        dfd = clippy.load._data[name] = $.Deferred();
-    }
-    return dfd;
-};
-
-clippy.ready = function (name, data) {
-    var dfd = clippy.load._getAgentDfd(name);
-    dfd.resolve(data);
-};
-
-clippy.soundsReady = function (name, data) {
-    var dfd = clippy.load._sounds[name];
-    if (!dfd) {
-        dfd = clippy.load._sounds[name] = $.Deferred();
-    }
-
-    dfd.resolve(data);
 };
 
 /******
@@ -1013,3 +1021,4 @@ clippy.Queue.prototype = {
     }
 };
 
+module.exports = clippy;
