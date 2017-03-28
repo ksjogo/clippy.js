@@ -120,8 +120,6 @@ clippy.soundsReady = function (name, data) {
     dfd.resolve(data);
 };
 
-var clippy = {};
-
 /******
  *
  *
@@ -1023,3 +1021,6 @@ clippy.Queue.prototype = {
 };
 
 module.exports = clippy;
+global.clippy = clippy;
+if (window)
+    window.clippy = clippy;
